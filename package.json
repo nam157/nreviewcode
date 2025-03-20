@@ -1,0 +1,38 @@
+{
+  "name": "nreviewcode",
+  "displayName": "NReviewCode",
+  "description": "Review coding and generative code",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.78.0"
+  },
+  "activationEvents": [
+    "onCommand:extension.ollamaReviewCode",
+    "onCommand:extension.ollamaGenerateCode"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "extension.ollamaReviewCode",
+        "title": "LLM: Review Code with Ollama"
+      },
+      {
+        "command": "extension.ollamaGenerateCode",
+        "title": "LLM: Generate Code with Ollama"
+      }
+    ]
+  },
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./"
+  },
+  "dependencies": {
+    "axios": "^x.x.x"
+  },
+  "devDependencies": {
+    "@types/node": "^16.x",
+    "@types/vscode": "^1.78.0",
+    "typescript": "^4.x.x",
+    "vscode": "^1.78.0"
+  }
+}
