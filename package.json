@@ -1,9 +1,10 @@
 {
-  "name": "nreviewcode",
-  "displayName": "NReviewCode",
+  "name": "wolf-pack",
+  "displayName": "Wolf pack",
   "description": "Review coding and generate code using Ollama",
   "version": "0.0.6",
   "publisher": "namnguyen",
+  "icon": "assest/logo.png",
   "engines": {
     "vscode": "^1.78.0"
   },
@@ -28,7 +29,7 @@
       }
     ],
     "configuration": {
-      "title": "NReviewCode Settings",
+      "title": "Wolf pack Settings",
       "properties": {
         "ollama.endpoint": {
           "type": "string",

@@ -1,4 +1,4 @@
-Dưới đây là một số gợi ý để bạn **hoàn thiện nội dung `README.md`** cho extension *nreviewcode*, nhằm đáp ứng yêu cầu của VS Code Marketplace và cũng để người dùng hiểu rõ giá trị extension của bạn:
+Dưới đây là một số gợi ý để bạn **hoàn thiện nội dung `README.md`** cho extension *Wolf pack*, nhằm đáp ứng yêu cầu của VS Code Marketplace và cũng để người dùng hiểu rõ giá trị extension của bạn:
 
 ---
 
@@ -6,16 +6,16 @@ Dưới đây là một số gợi ý để bạn **hoàn thiện nội dung `RE
 
 Ở đầu file, bạn nên **tóm tắt ngắn gọn** về extension:
 
-> `nreviewcode` là một VS Code extension cho phép bạn:
+> `Wolf pack` là một VS Code extension cho phép bạn:
 > - Review code trực tiếp trong VS Code bằng mô hình LLM chạy qua Ollama (local).
 > - Tạo (generate) code snippet theo yêu cầu.
 
 Ví dụ:
 
 ```md
-# nreviewcode
+# Wolf pack
 
-`nreviewcode` is a VS Code extension that integrates with Ollama's LLaMA model locally. It provides two primary features:
+`Wolf pack` is a VS Code extension that integrates with Ollama's LLaMA model locally. It provides two primary features:
 1. **Review Code**: Give a review of your current file regarding best practices, performance, and correctness.
 2. **Generate Code**: Generate code snippets based on user prompts.
 
@@ -42,8 +42,9 @@ This extension is particularly useful if you want to keep your code and AI infer
 
 Bạn nên thêm ảnh chụp màn hình (hoặc GIF) minh hoạ lệnh review/generate để người đọc dễ hình dung:
 
+![Wolf pack usage screenshot](https://images2.thanhnien.vn/528068263637045248/2024/6/23/afp20080801arp2086342v4highresfrancezoothoirywolf-1719186475805541734772.jpg)
 
-(Trong đó, `images/nreviewcode-usage.png` là ảnh mô tả người dùng chạy lệnh extension trong Command Palette.)
+(Trong đó, `images/Wolf pack-usage.png` là ảnh mô tả người dùng chạy lệnh extension trong Command Palette.)
 
 ---
 

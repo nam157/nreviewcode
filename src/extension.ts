@@ -54,14 +54,14 @@ async function callOllama(
     data: {
       prompt,
       model,
-      stream: false,
+      stream: true,
       ...restOptions,
     },
   };
 
   try {
     const response = await axios.request<OllamaResponse>(axiosConfig);
-    console.log('Raw Ollama response:', response.data); // Debug phản hồi
+    console.log('Raw Ollama response:', response.data);
     const reviewText = response.data.response?.trim();
     if (!reviewText) {
       throw new Error('Ollama returned no response content');
@@ -84,14 +84,14 @@ function createPromptFromTemplate(template: string, content: string): string {
     throw new Error('Prompt template is not defined. Please configure it in settings.');
   }
   const prompt = template.replace('${code}', content).replace('${description}', content).trim();
-  console.log('Prompt sent to Ollama:', prompt); // Debug prompt
+  console.log('Prompt sent to Ollama:', prompt);
   return prompt;
 }
 
 /**
- * Chèn review dưới dạng comment vào file
+ * Chèn review dưới dạng comment vào file và trả về Range của comment
  */
-async function insertReviewAsComment(editor: vscode.TextEditor, reviewText: string) {
+async function insertReviewAsComment(editor: vscode.TextEditor, reviewText: string): Promise<vscode.Range> {
   const positionConfig = vscode.workspace.getConfiguration('ollama').get<string>('reviewCommentPosition') || 'bottom';
   let position: vscode.Position;
 
@@ -157,9 +157,17 @@ async function insertReviewAsComment(editor: vscode.TextEditor, reviewText: stri
       break;
   }
 
+  // Chèn comment và tính Range
+  let insertedRange: vscode.Range;
   await editor.edit((editBuilder) => {
-    editBuilder.insert(position, commentText);
+    const startPosition = position;
+    editBuilder.insert(startPosition, commentText);
+    const lines = commentText.split('\n').length - 1; // Đếm số dòng
+    const endPosition = new vscode.Position(startPosition.line + lines, 0);
+    insertedRange = new vscode.Range(startPosition, endPosition);
   });
+
+  return insertedRange!;
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -191,13 +199,29 @@ export function activate(context: vscode.ExtensionContext) {
         const reviewText = await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: 'Reviewing code...',
+            title: 'Đang review code ! Vui lòng chờ chút chút nhé baby ...',
             cancellable: false,
           },
           () => callOllama(prompt)
         );
 
-        await insertReviewAsComment(editor, reviewText);
+        // Chèn comment và lấy Range
+        const commentRange = await insertReviewAsComment(editor, reviewText);
+
+        // Hiển thị thông báo với nút Accept/Reject
+        const action = await vscode.window.showInformationMessage(
+          'Review code bạn đã xong, hãy đọc đi. Bạn có muốn xóa comment code hay không ? Accept or Reject',
+          'Accept',
+          'Reject'
+        );
+
+        if (action === 'Reject') {
+          // Xóa comment nếu Reject
+          await editor.edit((editBuilder) => {
+            editBuilder.delete(commentRange);
+          });
+        }
+        // Nếu Accept, không làm gì (giữ nguyên comment)
       } catch (error: any) {
         vscode.window.showErrorMessage(error.message);
       }
