@@ -1,15 +1,21 @@
 {
   "name": "nreviewcode",
   "displayName": "NReviewCode",
-  "description": "Review coding and generative code",
-  "version": "0.0.1",
+  "description": "Review coding and generate code using Ollama",
+  "version": "0.0.6",
+  "publisher": "namnguyen",
   "engines": {
     "vscode": "^1.78.0"
   },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
   "activationEvents": [
     "onCommand:extension.ollamaReviewCode",
     "onCommand:extension.ollamaGenerateCode"
   ],
+  "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
@@ -20,18 +26,57 @@
         "command": "extension.ollamaGenerateCode",
         "title": "LLM: Generate Code with Ollama"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "NReviewCode Settings",
+      "properties": {
+        "ollama.endpoint": {
+          "type": "string",
+          "default": "http://localhost:11434/api/generate",
+          "description": "Ollama API endpoint URL (default port is 11434)"
+        },
+        "ollama.model": {
+          "type": "string",
+          "default": "llama2:7b",
+          "description": "Ollama model to use (e.g., llama2:7b, mistral:7b)"
+        },
+        "ollama.reviewPromptTemplate": {
+          "type": "string",
+          "default": "Bạn là một kỹ sư phần mềm có kinh nghiệm. Hãy review đoạn mã sau và cung cấp phản hồi chi tiết:\n- Tính đúng đắn (correctness): Có hoạt động như mong đợi không? Có bug tiềm ẩn không?\n- Hiệu suất (performance): Có thể tối ưu ở đâu?\n- Đề xuất cải thiện (nếu có).\nMã nguồn:\n```python\n${code}\n```",
+          "description": "Custom prompt template for code review. Use ${code} as placeholder for the code."
+        },
+        "ollama.generatePromptTemplate": {
+          "type": "string",
+          "default": "You are a coding assistant. Generate a TypeScript snippet for:\n\"${description}\"\nReturn only the code, no explanations.",
+          "description": "Custom prompt template for code generation. Use ${description} as placeholder for the user input."
+        },
+        "ollama.reviewCommentPosition": {
+          "type": "string",
+          "enum": ["top", "bottom", "cursor"],
+          "default": "bottom",
+          "description": "Where to insert the review comment: top of file, bottom of file, or at cursor."
+        }
+      }
+    }
   },
-  "main": "./out/extension.js",
   "scripts": {
-    "compile": "tsc -p ./"
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node ./node_modules/mocha/bin/mocha out/test/**/*.js",
+    "lint": "eslint src --ext ts"
   },
   "dependencies": {
-    "axios": "^x.x.x"
+    "axios": "^1.6.8"
   },
   "devDependencies": {
-    "@types/node": "^16.x",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^16.18.11",
     "@types/vscode": "^1.78.0",
-    "typescript": "^4.x.x"
+    "mocha": "^10.4.0",
+    "typescript": "^4.9.5",
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.62.0",
+    "eslint": "^8.57.0"
   }
 }

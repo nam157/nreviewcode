@@ -1,101 +1,243 @@
 import * as vscode from 'vscode';
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
+
+// Constants
+const OLLAMA_DEFAULT_ENDPOINT = 'http://localhost:11434/api/generate';
+const DEFAULT_MODEL = 'llama2:7b';
+const DEFAULT_TIMEOUT = 60000;
+
+interface OllamaResponse {
+  response: string;
+}
+
+/**
+ * Lấy cấu hình từ VSCode settings
+ */
+function getOllamaConfig() {
+  const config = vscode.workspace.getConfiguration('ollama');
+  return {
+    endpoint: config.get<string>('endpoint') || OLLAMA_DEFAULT_ENDPOINT,
+    model: config.get<string>('model') || DEFAULT_MODEL,
+    reviewPromptTemplate:
+      config.get<string>('reviewPromptTemplate') ||
+      'Bạn là một kỹ sư phần mềm có kinh nghiệm. Hãy review đoạn mã sau và cung cấp phản hồi chi tiết:\n- Tính đúng đắn (correctness): Có hoạt động như mong đợi không? Có bug tiềm ẩn không?\n- Hiệu suất (performance): Có thể tối ưu ở đâu?\n- Đề xuất cải thiện (nếu có).\nMã nguồn:\n```typescript\n${code}\n```',
+    generatePromptTemplate:
+      config.get<string>('generatePromptTemplate') ||
+      'You are a coding assistant. Generate a TypeScript snippet for:\n"${description}"\nReturn only the code, no explanations.',
+  };
+}
+
+/**
+ * Gọi API Ollama với cấu hình động
+ */
+async function callOllama(
+  prompt: string,
+  options: {
+    endpoint?: string;
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+  } = {}
+): Promise<string> {
+  const config = getOllamaConfig();
+  const { endpoint = config.endpoint, model = config.model, ...restOptions } = options;
+
+  if (!prompt.trim()) {
+    throw new Error('Prompt cannot be empty');
+  }
+
+  const axiosConfig: AxiosRequestConfig = {
+    method: 'POST',
+    url: endpoint,
+    timeout: DEFAULT_TIMEOUT,
+    headers: { 'Content-Type': 'application/json' },
+    data: {
+      prompt,
+      model,
+      stream: false,
+      ...restOptions,
+    },
+  };
+
+  try {
+    const response = await axios.request<OllamaResponse>(axiosConfig);
+    console.log('Raw Ollama response:', response.data); // Debug phản hồi
+    const reviewText = response.data.response?.trim();
+    if (!reviewText) {
+      throw new Error('Ollama returned no response content');
+    }
+    return reviewText;
+  } catch (error: any) {
+    const message = error.response
+      ? `Ollama API error: ${error.response.status} - ${error.response.data?.error}`
+      : `Network error: ${error.message}`;
+    console.error('Call Ollama error:', message);
+    throw new Error(message);
+  }
+}
+
+/**
+ * Tạo prompt từ template
+ */
+function createPromptFromTemplate(template: string, content: string): string {
+  if (!template) {
+    throw new Error('Prompt template is not defined. Please configure it in settings.');
+  }
+  const prompt = template.replace('${code}', content).replace('${description}', content).trim();
+  console.log('Prompt sent to Ollama:', prompt); // Debug prompt
+  return prompt;
+}
+
+/**
+ * Chèn review dưới dạng comment vào file
+ */
+async function insertReviewAsComment(editor: vscode.TextEditor, reviewText: string) {
+  const positionConfig = vscode.workspace.getConfiguration('ollama').get<string>('reviewCommentPosition') || 'bottom';
+  let position: vscode.Position;
+
+  switch (positionConfig) {
+    case 'top':
+      position = new vscode.Position(0, 0);
+      break;
+    case 'cursor':
+      position = editor.selection.active;
+      break;
+    case 'bottom':
+    default:
+      const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
+      position = new vscode.Position(lastLine.lineNumber + 1, 0);
+  }
+
+  const languageId = editor.document.languageId;
+  let commentText: string;
+  switch (languageId) {
+    case 'typescript':
+    case 'javascript':
+    case 'c':
+    case 'cpp':
+    case 'java':
+    case 'csharp':
+      commentText = `/*\n * Code Review:\n${reviewText
+        .split('\n')
+        .map((line) => ` * ${line}`)
+        .join('\n')}\n */\n`;
+      break;
+
+    case 'python':
+    case 'ruby':
+    case 'perl':
+      commentText = `# Code Review:\n${reviewText
+        .split('\n')
+        .map((line) => `# ${line}`)
+        .join('\n')}\n`;
+      break;
+
+    case 'html':
+    case 'xml':
+      commentText = `<!-- Code Review:\n${reviewText
+        .split('\n')
+        .map((line) => `  ${line}`)
+        .join('\n')}\n-->\n`;
+      break;
+
+    case 'rust':
+    case 'go':
+    case 'swift':
+      commentText = `// Code Review:\n${reviewText
+        .split('\n')
+        .map((line) => `// ${line}`)
+        .join('\n')}\n`;
+      break;
+
+    default:
+      commentText = `/*\n * Code Review (unknown language: ${languageId}):\n${reviewText
+        .split('\n')
+        .map((line) => ` * ${line}`)
+        .join('\n')}\n */\n`;
+      break;
+  }
+
+  await editor.edit((editBuilder) => {
+    editBuilder.insert(position, commentText);
+  });
+}
 
 export function activate(context: vscode.ExtensionContext) {
+  const config = getOllamaConfig();
 
-    /**
-     * Lệnh #1: Review code hiện tại
-     */
-    const reviewCmd = vscode.commands.registerCommand('extension.ollamaReviewCode', async () => {
-        // 1. Lấy code từ file đang mở
+  const getEditorCode = (): string | null => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      vscode.window.showErrorMessage('No active text editor');
+      return null;
+    }
+    return editor.document.getText();
+  };
+
+  // Lệnh Review Code
+  context.subscriptions.push(
+    vscode.commands.registerCommand('extension.ollamaReviewCode', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showErrorMessage('No active text editor');
+        return;
+      }
+
+      const code = getEditorCode();
+      if (!code) return;
+
+      try {
+        const prompt = createPromptFromTemplate(config.reviewPromptTemplate, code);
+        const reviewText = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Reviewing code...',
+            cancellable: false,
+          },
+          () => callOllama(prompt)
+        );
+
+        await insertReviewAsComment(editor, reviewText);
+      } catch (error: any) {
+        vscode.window.showErrorMessage(error.message);
+      }
+    })
+  );
+
+  // Lệnh Generate Code
+  context.subscriptions.push(
+    vscode.commands.registerCommand('extension.ollamaGenerateCode', async () => {
+      const userDesc = await vscode.window.showInputBox({
+        prompt: 'Describe the code snippet (e.g., "sum two numbers in TypeScript")',
+        validateInput: (value) => (value.trim() ? null : 'Description cannot be empty'),
+      });
+      if (!userDesc) return;
+
+      try {
+        const prompt = createPromptFromTemplate(config.generatePromptTemplate, userDesc);
+        const generatedCode = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Generating code...',
+            cancellable: false,
+          },
+          () => callOllama(prompt)
+        );
+
         const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-            return vscode.window.showErrorMessage('No active text editor');
+        if (editor) {
+          await editor.edit((editBuilder) =>
+            editBuilder.replace(editor.selection, generatedCode)
+          );
         }
-        const code = editor.document.getText();
+      } catch (error: any) {
+        vscode.window.showErrorMessage(error.message);
+      }
+    })
+  );
 
-        // 2. Tạo prompt cho Ollama
-        const reviewPrompt = `
-You are a senior code reviewer. Please review the following code for best practices, performance, and correctness. Provide suggestions:
-
-${code}
-        `.trim();
-
-        // 3. Gọi Ollama endpoint
-        try {
-            const response = await axios.post('http://localhost:11411/generate', {
-                prompt: reviewPrompt,
-                model: 'llama2:7b',    // model mà bạn đã pull, tùy ý
-                // Thêm các tham số khác như "temperature", "max_tokens", etc.
-                // Ollama có parameter "temperature", "top_k", "top_p", v.v...
-            }, {
-                timeout: 60000, // 60s
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            // 4. Phản hồi của Ollama trả về có thể ở dạng { done, model, response, ...}
-            // Tuỳ phiên bản Ollama. Thường "response" là text.
-            // Hãy in ra console để xem structure:
-            // console.log(response.data);
-
-            const reviewText = response.data?.response || 'No response';
-
-            vscode.window.showInformationMessage(`Review:\n${reviewText}`);
-        } catch (error) {
-            vscode.window.showErrorMessage(`Error calling Ollama: ${error}`);
-        }
-    });
-
-    /**
-     * Lệnh #2: Tạo code snippet
-     */
-    const generateCmd = vscode.commands.registerCommand('extension.ollamaGenerateCode', async () => {
-        // Hỏi user muốn tạo snippet gì
-        const userDesc = await vscode.window.showInputBox({
-            prompt: 'Describe the code snippet you want to generate (e.g. "a function that sums 2 numbers in TypeScript")'
-        });
-        if (!userDesc) {
-            return;
-        }
-
-        const genPrompt = `
-You are a coding assistant. Generate a short code snippet for the following request:
-"${userDesc}"
-Only provide the code snippet.
-        `.trim();
-
-        try {
-            const response = await axios.post('http://localhost:11411/generate', {
-                prompt: genPrompt,
-                model: 'llama2:7b',
-                // Ollama params...
-                // e.g. "temperature": 0.7
-            }, {
-                timeout: 60000,
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            const generatedCode = response.data?.response || '// No code generated';
-
-            // Chèn code vào vị trí con trỏ (cursor) hiện tại
-            const editor = vscode.window.activeTextEditor;
-            if (editor) {
-                editor.edit(editBuilder => {
-                    editBuilder.replace(editor.selection, generatedCode);
-                });
-            }
-        } catch (error) {
-            vscode.window.showErrorMessage(`Error generating code: ${error}`);
-        }
-    });
-
-    // Đăng ký các lệnh vào extension
-    context.subscriptions.push(reviewCmd);
-    context.subscriptions.push(generateCmd);
+  const { endpoint, model } = config;
+  console.log(`Ollama configured with endpoint: ${endpoint}, model: ${model}`);
 }
 
 export function deactivate() {}
